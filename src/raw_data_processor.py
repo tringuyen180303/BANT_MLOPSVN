@@ -105,7 +105,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase-id", type=str, default=ProblemConst.PHASE1)
     parser.add_argument("--prob-id", type=str, default=ProblemConst.PROB1)
+    parser.add_argument("--phase-id-2", type=str, default=ProblemConst.PHASE1)
+    parser.add_argument("--prob-id-2", type=str, default=ProblemConst.PROB1)
     args = parser.parse_args()
 
     prob_config = get_prob_config(args.phase_id, args.prob_id)
     RawDataProcessor.process_raw_data(prob_config)
+
+    prob_config_2 = get_prob_config(args.phase_id_2, args.prob_id_2)
+    RawDataProcessor.process_raw_data(prob_config_2)

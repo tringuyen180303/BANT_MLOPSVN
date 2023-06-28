@@ -1,11 +1,11 @@
 import argparse
 import logging
-
+import pickle
 import mlflow
 import numpy as np
 import xgboost as xgb
 from mlflow.models.signature import infer_signature
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, f1_score, accuracy_score, mean_squared_error, precision_score, recall_score
 
 from problem_config import (
     ProblemConfig,
@@ -27,7 +27,7 @@ class ModelTrainer:
         mlflow.set_experiment(
             f"{prob_config.phase_id}_{prob_config.prob_id}_{ModelTrainer.EXPERIMENT_NAME}"
         )
-
+        logging.info(f"load at port: {AppConfig.MLFLOW_TRACKING_URI}")
         # load train data
         train_x, train_y = RawDataProcessor.load_train_data(prob_config)
         train_x = train_x.to_numpy()
@@ -47,14 +47,30 @@ class ModelTrainer:
             objective = "binary:logistic"
         else:
             objective = "multi:softprob"
+        
         model = xgb.XGBClassifier(objective=objective, **model_params)
         model.fit(train_x, train_y)
 
+        #Load model in from batch
+        #with open("/Users/tringuyen/mlops-mara-sample-public/src/model_1.sav", "rb") as f:
+         #   model = pickle.load(f)
+        
         # evaluate
         test_x, test_y = RawDataProcessor.load_test_data(prob_config)
         predictions = model.predict(test_x)
         auc_score = roc_auc_score(test_y, predictions)
-        metrics = {"test_auc": auc_score}
+        f1 = f1_score(test_y, predictions)
+        mse = mean_squared_error(test_y, predictions)
+        recall = recall_score(test_y, predictions)
+        precision = precision_score(test_y, predictions)
+
+
+        metrics = {"test_auc": auc_score,
+                    "f1_score": f1,
+                    "mean_squared_error": mse, 
+                    "recall_score": recall,
+                    "precision_score": precision}
+
         logging.info(f"metrics: {metrics}")
 
         # mlflow log
@@ -66,6 +82,12 @@ class ModelTrainer:
             artifact_path=AppConfig.MLFLOW_MODEL_PREFIX,
             signature=signature,
         )
+        client = mlflow.tracking.MlflowClient()
+        client.transition_model_version_stage(
+            name="phase-1_prob-1_model-1",
+            version = 3,
+            stage="Production"
+        )
         mlflow.end_run()
         logging.info("finish train_model")
 
@@ -74,6 +96,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--phase-id", type=str, default=ProblemConst.PHASE1)
     parser.add_argument("--prob-id", type=str, default=ProblemConst.PROB1)
+    parser.add_argument("--phase-id-2", type=str, default=ProblemConst.PHASE1)
+    parser.add_argument("--prob-id-2", type=str, default=ProblemConst.PROB1)
+    
     parser.add_argument(
         "--add-captured-data", type=lambda x: (str(x).lower() == "true"), default=False
     )
@@ -84,3 +109,11 @@ if __name__ == "__main__":
     ModelTrainer.train_model(
         prob_config, model_config, add_captured_data=args.add_captured_data
     )
+
+    prob_config_2 = get_prob_config(args.phase_id_2, args.prob_id_2)
+    ModelTrainer.train_model(
+        prob_config_2, model_config, add_captured_data=args.add_captured_data
+    )
+
+
+

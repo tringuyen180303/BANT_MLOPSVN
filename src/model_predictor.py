@@ -16,6 +16,7 @@ from problem_config import ProblemConst, create_prob_config
 from raw_data_processor import RawDataProcessor
 from utils import AppConfig, AppPath
 
+
 PREDICTOR_API_PORT = 8000
 
 
@@ -30,8 +31,11 @@ class ModelPredictor:
         with open(config_file_path, "r") as f:
             self.config = yaml.safe_load(f)
         logging.info(f"model-config: {self.config}")
-
+        #logging.info("URI: ", AppConfig.MLFLOW_TRACKING_URI)
         mlflow.set_tracking_uri(AppConfig.MLFLOW_TRACKING_URI)
+        
+        #logging.info("phase_id", self.config['phase_id'])
+        #logging.info("prob_id", self.config['prob_id'])
 
         self.prob_config = create_prob_config(
             self.config["phase_id"], self.config["prob_id"]
@@ -48,7 +52,6 @@ class ModelPredictor:
 
     def detect_drift(self, feature_df) -> int:
         # watch drift between coming requests and training data
-        time.sleep(0.02)
         return random.choice([0, 1])
 
     def predict(self, data: Data):
@@ -89,8 +92,9 @@ class ModelPredictor:
 
 
 class PredictorApi:
-    def __init__(self, predictor: ModelPredictor):
+    def __init__(self, predictor: ModelPredictor, predictor_2: ModelPredictor):
         self.predictor = predictor
+        self.predictor_2 = predictor_2
         self.app = FastAPI()
 
         @self.app.get("/")
@@ -101,6 +105,13 @@ class PredictorApi:
         async def predict(data: Data, request: Request):
             self._log_request(request)
             response = self.predictor.predict(data)
+            self._log_response(response)
+            return response
+
+        @self.app.post("/phase-1/prob-2/predict")
+        async def predict(data: Data, request: Request):
+            self._log_request(request)
+            response = self.predictor_2.predict(data)
             self._log_response(response)
             return response
 
@@ -124,11 +135,22 @@ if __name__ == "__main__":
         / "model-1.yaml"
     ).as_posix()
 
+    default_config_path_2 = (
+        AppPath.MODEL_CONFIG_DIR
+        # ProbblemConst.PHASE1 = "phase-1"
+        / ProblemConst.PHASE1
+        # ProbblemConst.PROB1 = "prob-1"
+        / "prob-2"
+        / "model-1.yaml"
+    ).as_posix()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-path", type=str, default=default_config_path)
+    parser.add_argument("--config-path-2", type=str, default = default_config_path_2)
     parser.add_argument("--port", type=int, default=PREDICTOR_API_PORT)
     args = parser.parse_args()
 
     predictor = ModelPredictor(config_file_path=args.config_path)
-    api = PredictorApi(predictor)
+    predictor_2 = ModelPredictor(config_file_path=args.config_path_2)
+    api = PredictorApi(predictor, predictor_2)
     api.run(port=args.port)
